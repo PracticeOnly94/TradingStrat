@@ -1,0 +1,202 @@
+spring:
+  application:
+    name: trading-strat
+
+server:
+  port: 8080
+
+tradingstrat:
+  # Active trading strategy key. Strategies live in algorithm/impl and are selected by key().
+  # Options: cipher-b-confluence, basic (placeholder).
+  algorithm: cipher-b-confluence
+
+  # Cipher B confluence strategy. A dot is the trigger. priceTrend, dotTrendline and
+  # moneyFlow are mandatory gates; rsi, wtVwap and htfContext are scored.
+  confluence:
+    # Scored points required to fire, out of 3 (or 2 when only one interval is requested).
+    min-score: 2
+    # How recently the triggering dot must have printed.
+    dot-max-age-bars: 3
+    # How far back to look for the previous dot when checking structure.
+    dot-lookback-bars: 50
+    # Fallback lookback for money flow, used for the higher-timeframe check and when
+    # no dot pair exists. On the signal timeframe the dot window supersedes it.
+    mf-lookback: 3
+    # RSI "recovery" band for longs — deliberately spans 30, since dots often
+    # print while RSI is still slightly below it.
+    rsi-long-min: 28
+    rsi-long-max: 45
+    # RSI "rolling over" band for shorts.
+    rsi-short-min: 55
+    rsi-short-max: 72
+    # How the price trend participates: GATE (mandatory), SCORED (a point), OFF.
+    # Measured at 0% of green dots on BTCUSDT 1h as a GATE with require-price-side on —
+    # a Cipher B dot is a flush, which puts price below its own average by construction.
+    trend-mode: GATE
+    # Over what horizon the trend is measured.
+    #   MACRO      - long EMA slope at the signal bar (41.7% of dots on BTC/ETH/SOL)
+    #   DOT_WINDOW - slope between the two dots (6.3%; measures the flush, not the trend)
+    trend-window: MACRO
+    macro-trend-ema-len: 200
+    macro-trend-bars: 200
+    # Whether price must also sit on the correct side of the EMA. Measured at 8.3% of
+    # dots vs a ~49% baseline: a flush puts price below its averages by construction,
+    # so requiring it contradicts the dip-buy premise at any horizon.
+    trend-require-price-side: false
+    # Higher-timeframe price trend, at two horizons. Each is GATE, SCORED or OFF, so the
+    # sample-size cost of promoting one to a gate can be measured against the baseline.
+    #   global - the HTF macro EMA slope (macro-trend-ema-len over macro-trend-bars)
+    #   local  - the HTF recent EMA slope (htf-local-ema-len over htf-local-bars)
+    htf-trend-global-mode: SCORED
+    htf-trend-local-mode: SCORED
+    htf-local-ema-len: 50
+    htf-local-bars: 10
+    # Only used when trend-window is DOT_WINDOW.
+    trend-ema-len: 50
+    # Fallback EMA slope lookback, used for the higher-timeframe check and when no dot
+    # pair exists. On the signal timeframe the dot window supersedes it.
+    trend-slope-bars: 5
+    # Minimum per-bar slope of the dot trendline. 0 = any upward line qualifies.
+    dot-min-slope: 0.0
+    # Which earlier dot the trendline is drawn to:
+    #   ANY      - any earlier dot in the lookback that forms a valid line (default)
+    #   PREVIOUS - strictly the dot before the latest
+    #   LOWEST   - the most extreme earlier dot (lowest wt2 for longs)
+    dot-anchor: ANY
+    # Fallback stop when no support/resistance level is available.
+    swing-lookback: 20
+    # Fallback target multiple when no level lies ahead of the trade.
+    reward-risk: 2.0
+
+    # How stops and targets are placed:
+    #   LEVELS       - nearest S/R either side (avg win 0.97% over a 1.9-bar hold, so
+    #                  a ~0.2% round trip eats a fifth of every winner)
+    #   ATR          - both sides sized to volatility
+    #   OPPOSITE_DOT - ATR stop, held until the opposite Cipher B dot
+    exit-mode: LEVELS
+    atr-len: 14
+    atr-stop-mult: 1.5
+    atr-target-mult: 3.0
+
+    # Entry conditions that are near-implied by the dot itself can be switched off.
+    # wtVwap in particular: a buy dot requires crossUp, which means wt1 >= wt2, which
+    # means wtVwap >= 0 by construction.
+    rsi-mode: SCORED
+    wt-vwap-mode: SCORED
+
+    # Filters selecting for deeper capitulation rather than healthier conditions —
+    # the direction the measurements point.
+    require-gold-buy: false
+    require-divergence: false
+    # wt2 must be at or below this for a dot to count. Cipher B's own levels are
+    # -53 (default), -60 and -75.
+    dot-oversold-level: -53
+
+    # Sides traded. Never measured separately before, and crypto has a structural
+    # long bias, so shorts may be dragging the aggregate.
+    trade-longs: true
+    trade-shorts: true
+
+  # Momentum continuation. Built because the conditional forward-return study found
+  # overbought readings are followed by rising prices (wt2>=60 -> +0.500% over 48 bars
+  # vs a +0.086% baseline) and oversold by falling ones — the opposite of Cipher B's
+  # mean-reversion premise.
+  momentum:
+    # wt2 level whose crossing opens a position (mirrored for shorts).
+    wt2-entry: 60
+    # Additional RSI requirement; 0 disables it.
+    rsi-entry: 0
+    # Momentum is spent when price closes back through this EMA — the trend-following exit.
+    exit-ema-len: 20
+    atr-stop-mult: 2.0
+    # Wide on purpose: the exit signal should end most trades, not the target.
+    atr-target-mult: 8.0
+    require-bull-trend: false
+    macro-ema-len: 200
+    macro-bars: 200
+    trade-longs: true
+    trade-shorts: true
+
+  # The two setups that replicated out-of-sample on 30 untouched symbols across 2022-2026.
+  # Long  (bull regime): rsi<30 and wt2<=-53   -> +1.78%/trade over 48 bars, 5/5 years
+  # Short (bear regime): wt2>=60 and bearDiv   -> +1.15%/short, 60.7% hit rate
+  measured-edge:
+    trade-longs: true
+    trade-shorts: true
+    long-rsi-max: 30
+    long-wt2-max: -53
+    short-wt2-min: 60
+    require-bear-div: true
+    # Protective only; 0 parks the stop far away to reproduce the unstopped measurement.
+    atr-stop-mult: 3.0
+    macro-ema-len: 200
+    macro-bars: 200
+
+  # Range position + RSI: positive in 8 of 8 measured windows across 50 symbols.
+  range-rsi:
+    range-lookback: 100
+    range-pctile-max: 20
+    rsi-max: 30
+    # Enter when the setup resolves rather than on its first bar - see RangeRsiProperties.
+    entry-on-recovery: false
+    atr-stop-mult: 0
+
+  # Live execution of the trend overlay — the only strategy that survived testing.
+  #
+  # SAFETY: two independent switches, both defaulting safe.
+  #   enabled=false  -> the scheduler never runs
+  #   dry-run=true   -> decisions are logged, no orders are sent
+  # Real orders require deliberately changing BOTH.
+  #
+  # Market data always comes from tradingstrat.chart-api.base-url (production), because
+  # testnet candles are synthetic and would make a dry run meaningless. Only trade-base-url
+  # switches where orders go.
+  live:
+    enabled: false
+    dry-run: true
+    symbols: ["BTCUSDT", "ETHUSDT"]
+    interval: 4h
+    ema-len: 200
+    band-pct: 2.0
+    quote-per-symbol: 100
+    quote-asset: USDT
+    # Testnet: https://testnet.binance.vision   Production: https://api.binance.com
+    trade-base-url: https://testnet.binance.vision
+    # Supply via environment variables; never commit real keys.
+    api-key: ${BINANCE_API_KEY:}
+    api-secret: ${BINANCE_API_SECRET:}
+    state-dir: ./live-state
+    kline-bars: 1000
+
+  # Support/resistance from clustered swing pivots. Drives stops and targets.
+  sr:
+    # How far back to collect pivots.
+    lookback-bars: 200
+    # Bars required either side of a pivot. 2/2 matches the 5-bar Williams fractal
+    # already used for divergence detection.
+    pivot-left: 2
+    pivot-right: 2
+    # Pivots within this % of a cluster's mean are treated as the same level.
+    cluster-tolerance-pct: 0.35
+    # Pivots a cluster needs before it counts as a level. 1 accepts every lone pivot.
+    min-touches: 2
+    # Stop sits this % beyond the level, target this % short of it.
+    stop-buffer-pct: 0.1
+    target-buffer-pct: 0.1
+
+  chart-api:
+    base-url: https://api.binance.com
+    # Generous: a 1000-candle page is ~180KB, and universe backtests pull hundreds of
+    # pages concurrently. At 5s these timed out and silently cost us half the sample.
+    timeout-ms: 20000
+    # Candles per request. Cipher B needs generous history: the money-flow ribbon alone
+    # is a 60-bar SMA, and divergence detection needs fractal history beyond that.
+    # Binance allows up to 1000.
+    default-limit: 300
+
+---
+# Run with --spring.profiles.active=stub to use fake candle data instead of Binance
+spring:
+  config:
+    activate:
+      on-profile: stub

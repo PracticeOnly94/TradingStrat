@@ -1,0 +1,14 @@
+#My Project
+ 
+a tool to apply trading strategies (check if chart meets conditions to short/long an asset).
+It needs to take charts from API ( maybe tradingView), apply an algorithm and say if it should be longed or shorted, with stoplosses/targets. Initially i just want the structure, we will worry about the algorithms later.
+This will be just backend.
+
+##Stack 
+Java 21, Spring Boot,
+Can add frameworks to make things easier.
+
+## Base Architecture
+	logic will be incapsulated in services.
+	the master service, i want 2 versions. One that reads from a list of charts to read and sequentially, calls the api and applies the algorithm .
+The other one, I want it to be parallel/asynchronous.

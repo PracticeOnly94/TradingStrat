@@ -1,0 +1,14 @@
+# Build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Local env / secrets
+.env
+*.log
